@@ -166,6 +166,19 @@
           "minimum": 1024,
           "default": 16777216,
           "description": "stdout cap. Excess bytes are silently truncated."
+        },
+        "sidecar": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["image"],
+          "properties": {
+            "image": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Container image the handler executes inside. When absent, the installer uses helmdeck's default helmdeck-sidecar-marketplace image (bundles bash + jq + curl + python3 + node 20 + standard Unix utils). Declare this when your pack needs a heavier toolchain (e.g. ffmpeg, ImageMagick, ML inference libraries). Per ADR 038 in tosin2013/helmdeck."
+            }
+          },
+          "description": "Per-pack sidecar override for the handler runtime. See ADR 038 in tosin2013/helmdeck."
         }
       }
     },
