@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# cmd.wordcount handler — read {text: "..."} from stdin, return
+# {lines, words, characters} on stdout.
+#
+# Semantics (verified by the examples in helmdeck-pack.yaml):
+#   - lines:      number of non-empty newline-separated segments
+#                 (so "hello world" is 1 line, "foo\nbar" is 2, "foo\n" is 1)
+#   - words:      whitespace-separated tokens
+#   - characters: Unicode code-point count (jq's `length` for strings)
+#
+# Pure jq for portability — handlers shouldn't assume GNU vs BSD wc.
+set -euo pipefail
+
+jq -ec '
+  if .text == null then
+    error("missing required field: text")
+  elif (.text | type) != "string" then
+    error("field text must be a string, got " + (.text | type))
+  else
+    (.text | split("\n")) as $segs
+    | (if ($segs | length) > 0 and $segs[-1] == "" then $segs[:-1] else $segs end) as $lines
+    | {
+        lines:      ($lines | length),
+        words:      ([.text | scan("\\S+")] | length),
+        characters: (.text | length)
+      }
+  end
+'

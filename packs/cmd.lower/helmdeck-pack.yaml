@@ -1,0 +1,34 @@
+name: cmd.lower
+version: v1
+author: tosin2013
+license: Apache-2.0
+description: Lowercase a string. Sibling of cmd.upper — shipped as part of the marketplace seed to demonstrate that authoring a second pack is mechanically identical to the first (good "more like this" UX test for the catalog).
+category: developer-tools
+tags: [example, string, demo]
+
+input_schema:
+  required: [text]
+  properties:
+    text:
+      type: string
+      description: The string to lowercase.
+
+output_schema:
+  required: [text]
+  properties:
+    text:
+      type: string
+      description: The input, lowercased.
+
+handler:
+  type: command
+  command: ["./lower"]
+  timeout_s: 5
+
+examples:
+  - name: hello
+    input: { text: HELLO }
+    expected_output_subset: { text: hello }
+  - name: mixed
+    input: { text: "Hello, World!" }
+    expected_output_subset: { text: "hello, world!" }
