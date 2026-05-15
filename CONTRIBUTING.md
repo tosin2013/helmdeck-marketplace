@@ -152,11 +152,42 @@ The validation workflow ([`validate.yml`](.github/workflows/validate.yml)) cross
 
 ## Trust + signing
 
-- **Maintainer-merged packs** automatically get cosign-signed on the next release tag of this repo. The signing job lives in [`.github/workflows/sign.yml`](.github/workflows/sign.yml).
-- **Operators** see your pack as "Signed" once a release with your pack has been cut.
-- **Until then** (between merge and the next release), operators see your pack as "Unsigned" and need to confirm install.
+The trust model has two stages per [helmdeck ADR 034](https://github.com/tosin2013/helmdeck/blob/main/docs/adrs/034-pack-marketplace.md) §"Trust model":
 
-You don't need to do anything for signing — it happens at release time.
+- **Stage A (ships v0.13.0 GA)** — every pack's manifest carries a `trust.sha256` field that the installer verifies against the materialized pack files on every install. A mismatch (someone tampered with the bytes between sign and install) hard-rejects the install.
+- **Stage B (deferred to v1.0)** — full sigstore keyless verification of the manifest's `trust.signed_by` identity against the cosign certificate uploaded to the GitHub Release. Adds a true cryptographic identity check on top of stage A's content integrity check.
+
+### As a contributor
+
+You **do not** populate `trust.sha256` or `trust.signed_by` in your manifest. The maintainer runs a pre-release script that:
+
+1. Walks every `packs/<name>/` and computes the deterministic hash of its non-manifest files.
+2. Writes `trust.sha256` + `trust.signed_by` into each `helmdeck-pack.yaml`.
+3. Commits the updated manifests as a separate "release prep" PR.
+4. Tags the merged commit; the [`sign.yml`](.github/workflows/sign.yml) workflow cosign-signs the tarballs and attaches signatures to the GitHub Release.
+
+If you submit a PR with `trust:` fields already set, the maintainer will either remove them (so the release-prep PR is the single source of truth) or accept them if they exactly match what the script would compute. Easier just to leave the block empty.
+
+### As the maintainer
+
+Before tagging a release:
+
+```sh
+# 1. Populate hashes (writes trust.sha256 + trust.signed_by per pack)
+node scripts/populate-trust-hashes.mjs
+
+# Optional: a different signing identity (e.g. for a fork)
+node scripts/populate-trust-hashes.mjs --signed-by my-github-handle
+
+# 2. Commit + push as a normal PR
+git add packs/ && git commit -m "release: populate trust.sha256 for vX.Y.Z"
+git push
+
+# 3. Merge the PR, then tag the merged commit. sign.yml fires on tag push.
+git tag vX.Y.Z && git push --tags
+```
+
+The sign.yml workflow runs `populate-trust-hashes.mjs --check` BEFORE invoking cosign, so a maintainer who forgot to re-run the populate step gets a clear CI failure rather than a release with stale hashes.
 
 ## Testing your pack locally
 

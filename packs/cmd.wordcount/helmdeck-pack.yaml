@@ -2,19 +2,27 @@ name: cmd.wordcount
 version: v1
 author: tosin2013
 license: Apache-2.0
-description: Count lines, words, and characters in a string. Like `wc -lwc` but JSON-shaped. Demonstrates a multi-field output schema — a useful pattern for any pack returning structured analytics rather than a single value.
+description: >-
+  Count lines, words, and characters in a string. Like `wc -lwc` but JSON-shaped. Demonstrates a multi-field output
+  schema — a useful pattern for any pack returning structured analytics rather than a single value.
 category: developer-tools
-tags: [example, string, analytics, demo]
-
+tags:
+  - example
+  - string
+  - analytics
+  - demo
 input_schema:
-  required: [text]
+  required:
+    - text
   properties:
     text:
       type: string
       description: The text to count.
-
 output_schema:
-  required: [lines, words, characters]
+  required:
+    - lines
+    - words
+    - characters
   properties:
     lines:
       type: number
@@ -25,16 +33,28 @@ output_schema:
     characters:
       type: number
       description: Total character count (bytes).
-
 handler:
   type: command
-  command: ["./wordcount"]
+  command:
+    - ./wordcount
   timeout_s: 5
-
 examples:
   - name: short
-    input: { text: "hello world" }
-    expected_output_subset: { words: 2, lines: 1, characters: 11 }
+    input:
+      text: hello world
+    expected_output_subset:
+      words: 2
+      lines: 1
+      characters: 11
   - name: multiline
-    input: { text: "hello\nworld\nfoo bar" }
-    expected_output_subset: { lines: 3, words: 4 }
+    input:
+      text: |-
+        hello
+        world
+        foo bar
+    expected_output_subset:
+      lines: 3
+      words: 4
+trust:
+  signed_by: tosin2013
+  sha256: 5fdc479067ed1d796e598fd205ef2bedd92082d623fce634b47ca58d18460773
