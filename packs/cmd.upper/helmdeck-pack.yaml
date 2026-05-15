@@ -1,0 +1,36 @@
+name: cmd.upper
+version: v1
+author: tosin2013
+license: Apache-2.0
+description: Uppercase a string. The smallest possible worked example for the helmdeck marketplace — demonstrates the command-handler protocol (stdin JSON → stdout JSON) in a single bash pipeline.
+category: developer-tools
+tags: [example, string, demo]
+
+input_schema:
+  required: [text]
+  properties:
+    text:
+      type: string
+      description: The string to uppercase.
+
+output_schema:
+  required: [text]
+  properties:
+    text:
+      type: string
+      description: The input, uppercased.
+
+handler:
+  type: command
+  command: ["./upper"]
+  timeout_s: 5
+
+examples:
+  - name: hello
+    description: Basic ASCII string.
+    input: { text: hello }
+    expected_output_subset: { text: HELLO }
+  - name: mixed
+    description: Mixed-case input is fully uppercased.
+    input: { text: "Hello, World!" }
+    expected_output_subset: { text: "HELLO, WORLD!" }

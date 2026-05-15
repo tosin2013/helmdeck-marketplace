@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# cmd.upper handler — read {text: "..."} from stdin, return {text: "..."}
+# with text uppercased on stdout. Exits 1 with a stderr message on bad input.
+set -euo pipefail
+
+# `jq -e` returns non-zero when the filter produces null/false, which is
+# how we surface "missing required field" as a typed failure.
+jq -er '
+  if .text == null then
+    error("missing required field: text")
+  elif (.text | type) != "string" then
+    error("field text must be a string, got " + (.text | type))
+  else
+    { text: (.text | ascii_upcase) }
+  end
+'

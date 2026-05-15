@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# cmd.lower handler — read {text: "..."} from stdin, return {text: "..."}
+# with text lowercased on stdout.
+set -euo pipefail
+
+jq -er '
+  if .text == null then
+    error("missing required field: text")
+  elif (.text | type) != "string" then
+    error("field text must be a string, got " + (.text | type))
+  else
+    { text: (.text | ascii_downcase) }
+  end
+'

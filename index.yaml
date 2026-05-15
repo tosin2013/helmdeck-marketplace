@@ -12,4 +12,27 @@
 
 catalog_version: v1
 
-packs: []
+packs:
+  - name: cmd.upper
+    version: v1
+    path: packs/cmd.upper
+    description: Uppercase a string. Smallest possible example pack.
+    author: tosin2013
+    category: developer-tools
+    tags: [example, string, demo]
+
+  - name: cmd.lower
+    version: v1
+    path: packs/cmd.lower
+    description: Lowercase a string. Sibling of cmd.upper.
+    author: tosin2013
+    category: developer-tools
+    tags: [example, string, demo]
+
+  - name: cmd.wordcount
+    version: v1
+    path: packs/cmd.wordcount
+    description: Count lines, words, and characters in a string. Multi-field output example.
+    author: tosin2013
+    category: developer-tools
+    tags: [example, string, analytics, demo]
