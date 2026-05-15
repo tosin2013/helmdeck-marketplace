@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/tosin2013/helmdeck-marketplace/main/schemas/index.schema.json",
+  "title": "helmdeck marketplace catalog index",
+  "description": "Schema for the top-level index.yaml. The helmdeck control plane fetches this file at startup and on POST /api/v1/marketplace/refresh to enumerate the catalog without walking every pack directory.",
+  "type": "object",
+  "required": ["packs"],
+  "additionalProperties": false,
+  "properties": {
+    "catalog_version": {
+      "type": "string",
+      "description": "Marketplace catalog format version. Bumped only on breaking schema changes. v0.13.0 ships v1."
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last updated timestamp (RFC 3339). Populated by the validate.yml workflow on every commit to main."
+    },
+    "packs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "version", "path", "description", "author"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+            "description": "Pack name. Must match the helmdeck-pack.yaml in `path`."
+          },
+          "version": {
+            "type": "string",
+            "description": "Pack version. Must match the helmdeck-pack.yaml in `path`."
+          },
+          "path": {
+            "type": "string",
+            "pattern": "^packs/[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*/?$",
+            "description": "Directory containing the pack, relative to repo root. Convention: packs/<name>/."
+          },
+          "description": {
+            "type": "string",
+            "minLength": 10,
+            "description": "One-line catalog blurb. May be shorter than the manifest's full description."
+          },
+          "author": { "type": "string" },
+          "category": {
+            "type": "string",
+            "enum": ["developer-tools", "cloud", "notifications", "database", "security", "ai-tools", "monitoring", "productivity", "media"]
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "installs": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Cumulative install count. Populated by the helmdeck telemetry pipeline (#33); operators can ignore in PR submissions."
+          },
+          "stars": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "User stars from the future consumer marketplace (#33). Operators can ignore in PR submissions."
+          }
+        }
+      }
+    }
+  }
+}

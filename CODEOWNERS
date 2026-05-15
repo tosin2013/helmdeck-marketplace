@@ -1,0 +1,14 @@
+# Catalog-level changes (schemas, index, CI workflows) — maintainer review
+/schemas/                         @tosin2013
+/index.yaml                       @tosin2013
+/.github/                         @tosin2013
+
+# Pack additions — community review welcome, maintainer approval required
+# Each subdir under packs/ inherits this; pack authors are encouraged to
+# add themselves to their pack's helmdeck-pack.yaml `author:` field.
+/packs/                           @tosin2013
+
+# Top-level docs
+/README.md                        @tosin2013
+/CONTRIBUTING.md                  @tosin2013
+/LICENSE                          @tosin2013

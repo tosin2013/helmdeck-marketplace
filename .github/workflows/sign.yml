@@ -1,0 +1,55 @@
+name: sign
+
+# Signs the catalog and every pack directory tarball with cosign on
+# release tags. The keyless flow uses GitHub Actions' OIDC token —
+# no maintained signing key. Verification on the consumer side is
+# `cosign verify` against the GitHub identity.
+#
+# The control plane's marketplace loader checks for these signatures
+# at install time. Per ADR 034 + the v0.13.0 trust policy: signatures
+# are verified when present; unsigned packs are allowed but surface
+# a "Unsigned" trust badge requiring explicit operator consent.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write       # writes the signatures back to the release artifacts
+  packages: write       # for ghcr.io/cosign storage if enabled
+  id-token: write       # OIDC for keyless cosign
+
+jobs:
+  sign-packs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Tarball + sign each pack directory
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/marketplace-sigs
+          for dir in packs/*/; do
+            name=$(basename "$dir")
+            tarball="/tmp/marketplace-sigs/${name}.tar.gz"
+            tar -czf "$tarball" -C packs "$name"
+            cosign sign-blob --yes --output-signature "${tarball}.sig" --output-certificate "${tarball}.crt" "$tarball"
+          done
+
+      - name: Sign index.yaml itself
+        run: |
+          cosign sign-blob --yes \
+            --output-signature /tmp/marketplace-sigs/index.yaml.sig \
+            --output-certificate /tmp/marketplace-sigs/index.yaml.crt \
+            index.yaml
+
+      - name: Attach signatures to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            /tmp/marketplace-sigs/*.tar.gz
+            /tmp/marketplace-sigs/*.sig
+            /tmp/marketplace-sigs/*.crt

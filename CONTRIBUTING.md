@@ -1,0 +1,198 @@
+# Contributing a pack to the helmdeck marketplace
+
+This guide walks you through adding a new capability pack to the community catalog. The same path applies whether your pack wraps an existing SaaS API, glues helmdeck's built-in packs into a new workflow, or ships a binary you wrote yourself.
+
+For the *design rationale* behind the marketplace (trust model, handler types, install flow), see **[helmdeck ADR 034](https://github.com/tosin2013/helmdeck/blob/main/docs/adrs/034-pack-marketplace.md)**.
+
+## TL;DR
+
+1. Fork this repo.
+2. Create `packs/<your-pack-name>/`.
+3. Add `helmdeck-pack.yaml` describing the pack (schema in [`schemas/helmdeck-pack.schema.json`](schemas/helmdeck-pack.schema.json), worked example in [`packs/cmd.upper/`](packs/cmd.upper/)).
+4. Add your handler (executable script for `command`-type packs; not needed for `composite`-type).
+5. Append an entry to [`index.yaml`](index.yaml).
+6. Open a PR. The validation workflow checks the manifest against the schema.
+7. Merged PRs become installable from every helmdeck deployment on the next catalog refresh.
+
+## Pack naming
+
+Pack names use `<family>.<verb>` (e.g. `slack.post_message`, `gitlab.create_issue`, `cmd.upper`). The family is the service or domain; the verb is the action.
+
+Reserved namespaces (built-in core packs — don't reuse these in marketplace packs):
+
+- `browser.*`, `web.*`, `fs.*`, `cmd.*` (built-in `cmd.run` only — `cmd.<your-pack>` is fine for subprocess packs), `git.*`, `repo.*`, `http.*`, `slides.*`, `doc.*`, `desktop.*`, `vision.*`, `python.*`, `node.*`, `github.*`, `blog.*`, `podcast.*`, `image.*`, `hyperframes.*`, `content.*`, `research.*`, `stock.*`
+
+Anything else is fair game — pick a family name that's specific enough that two unrelated packs won't collide. When in doubt, ask in your PR description.
+
+## Pack manifest (`helmdeck-pack.yaml`)
+
+Every pack has a single YAML manifest declaring its identity, schemas, handler, and trust info. See [`schemas/helmdeck-pack.schema.json`](schemas/helmdeck-pack.schema.json) for the full JSON Schema. The minimum viable manifest:
+
+```yaml
+name: example.echo
+version: v1
+author: your-github-username
+license: Apache-2.0
+description: Echo the input as the output. Sample pack for the contributor guide.
+category: developer-tools          # see "Categories" below
+tags: [example, echo, demo]
+
+input_schema:
+  required: [text]
+  properties:
+    text: { type: string, description: "The string to echo back." }
+
+output_schema:
+  required: [text]
+  properties:
+    text: { type: string }
+
+handler:
+  type: command                    # builtin | command | composite | wasm
+  command: ["./echo"]              # path is relative to this pack's directory
+```
+
+### Required top-level fields
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | string | `<family>.<verb>` form. Globally unique within this catalog. |
+| `version` | string | Semver (`v1`, `v1.2.0`) or date-style (`2026.05`). Bump on every change. |
+| `author` | string | GitHub username or organization; surfaces in the UI's pack-detail view. |
+| `description` | string | One-paragraph plain-English summary. Surfaces in the catalog list. |
+| `input_schema` | object | JSON-Schema-style. See `schemas/helmdeck-pack.schema.json`. |
+| `output_schema` | object | Same shape as `input_schema`. |
+| `handler` | object | Handler type + invocation. See "Handler types" below. |
+
+### Recommended fields
+
+| Field | Type | Notes |
+|---|---|---|
+| `license` | string | SPDX identifier (`Apache-2.0`, `MIT`, `BSD-3-Clause`, …). Defaults to "unspecified". |
+| `category` | string | One of: `developer-tools`, `cloud`, `notifications`, `database`, `security`, `ai-tools`, `monitoring`, `productivity`, `media`. |
+| `tags` | array of string | Free-form search keywords. |
+| `needs_session` | boolean | True if the pack reads/writes session-scoped filesystem state (cloned repos, fs.*). Default false. |
+| `examples` | array | Worked input/output pairs the validation CI runs against. |
+
+## Handler types
+
+| Type | What it is | When to use |
+|---|---|---|
+| `builtin` | Compiled into helmdeck-core | **Not for community packs.** Reserved for core team. |
+| `command` | Executable script (any language) reading JSON from stdin, writing JSON to stdout | The default for community packs. Cross-language friendly. |
+| `composite` | Sequence of other packs glued together | Workflow packs that compose existing packs — no code at all. |
+| `wasm` | WASI module | Phase 8 — high-performance sandboxed packs. Not yet available. |
+
+### `command` handler (the common case)
+
+```yaml
+handler:
+  type: command
+  command: ["python3", "handler.py"]    # argv list; paths relative to pack dir
+  timeout_s: 30                          # optional; default 60
+  env:                                   # optional per-pack env vars
+    - PYTHONUNBUFFERED=1
+  max_output_bytes: 1048576              # optional; default 16 MiB
+```
+
+The handler reads one JSON value from stdin, processes it, writes one JSON value to stdout, exits with code 0 on success or non-zero on failure (stderr surfaces in the pack error envelope).
+
+This is the same protocol the v0.12.0 subprocess pack format documents — see [helmdeck's how-to](https://github.com/tosin2013/helmdeck/blob/main/docs/howto/build-subprocess-pack.md).
+
+### `composite` handler (no-code workflows)
+
+```yaml
+handler:
+  type: composite
+  steps:
+    - pack: research.deep
+      args:
+        query: "$.input.topic"           # JSONPath-style ref to the pack input
+    - pack: content.ground
+      args:
+        text: "$.steps[0].output.summary"
+        # ...
+```
+
+Composite packs wire existing packs into a multi-step workflow. The control plane orchestrates the calls; no executable handler is needed.
+
+## Categories
+
+Pick the category that best fits your pack:
+
+- **developer-tools** — Git platforms, CI/CD, project management (Jira, Linear, GitLab, Bitbucket, …)
+- **cloud** — AWS, GCP, Azure, Cloudflare, fly.io, …
+- **notifications** — Slack, Discord, Teams, email, SMS, push, …
+- **database** — PostgreSQL, MongoDB, Redis, MySQL, ClickHouse, …
+- **security** — Trivy, Snyk, Semgrep, OPA, secrets scanning, …
+- **ai-tools** — Embeddings, batch APIs, vector DBs, model providers, …
+- **monitoring** — Datadog, PagerDuty, Grafana, Honeycomb, Sentry, …
+- **productivity** — Notion, Airtable, calendaring, document tools, …
+- **media** — Stock photo/video, image/audio/video manipulation, transcription, …
+
+When in doubt, pick the closest fit and mention it in your PR — we can re-categorize after review.
+
+## index.yaml — the catalog header
+
+Every pack also needs a one-line entry in [`index.yaml`](index.yaml). The control plane reads this file to enumerate the catalog without walking every pack directory:
+
+```yaml
+packs:
+  - name: cmd.upper
+    version: v1
+    path: packs/cmd.upper
+    description: Uppercase a string. Smallest possible example pack.
+    category: developer-tools
+    tags: [example, string]
+    author: tosin2013
+  # ... your new entry here
+```
+
+The validation workflow ([`validate.yml`](.github/workflows/validate.yml)) cross-checks `index.yaml` entries against every `packs/<name>/helmdeck-pack.yaml` — they must agree on name + version.
+
+## Trust + signing
+
+- **Maintainer-merged packs** automatically get cosign-signed on the next release tag of this repo. The signing job lives in [`.github/workflows/sign.yml`](.github/workflows/sign.yml).
+- **Operators** see your pack as "Signed" once a release with your pack has been cut.
+- **Until then** (between merge and the next release), operators see your pack as "Unsigned" and need to confirm install.
+
+You don't need to do anything for signing — it happens at release time.
+
+## Testing your pack locally
+
+Before opening a PR:
+
+```sh
+# 1. Validate your manifest against the schema.
+ajv validate -s schemas/helmdeck-pack.schema.json -d packs/<your-pack>/helmdeck-pack.yaml
+
+# 2. Test your handler with a real input.
+echo '{"text":"hello"}' | ./packs/<your-pack>/<your-handler>
+
+# 3. (When the local marketplace flag lands in helmdeck) install from your fork
+#    and call the pack end-to-end.
+helmdeck pack install <your-pack> --marketplace=file://$(pwd)
+```
+
+## What gets reviewed
+
+- **Schema correctness**: manifest passes `helmdeck-pack.schema.json` validation. CI enforces.
+- **Handler correctness**: the examples block runs end-to-end. CI enforces.
+- **Name collision**: your pack name doesn't clash with existing packs or reserved core namespaces.
+- **License clarity**: SPDX identifier is set and matches your handler's actual license.
+- **Description quality**: one paragraph that a non-expert can understand. We may suggest edits.
+- **Reasonable scope**: the pack does one thing well; not a kitchen-sink wrapper around a whole API.
+
+## What we will NOT do
+
+- **Promise long-term maintenance** of every community pack. If a pack's upstream API breaks and the author is unreachable, we may mark it deprecated rather than fix it.
+- **Accept packs with hard-coded secrets or credentials.** Use the vault — see [helmdeck's credential docs](https://github.com/tosin2013/helmdeck/blob/main/docs/howto/manage-vault-credentials.md).
+- **Accept malicious or copyleft-conflicting code.** We reserve the right to refuse packs that look like they exist to exfiltrate data, spam, or that bundle GPL-3 code in a way that infects helmdeck-core.
+
+## Getting help
+
+- Open a [discussion](https://github.com/tosin2013/helmdeck/discussions) for design questions
+- Open a [pack-candidate issue](https://github.com/tosin2013/helmdeck/issues?q=is%3Aissue+label%3Apack-candidate) if you want feedback before building
+- Tag `@tosin2013` in your PR for prioritization
+
+Welcome to the helmdeck ecosystem.

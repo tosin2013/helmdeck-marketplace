@@ -1,0 +1,15 @@
+# helmdeck marketplace catalog
+#
+# This file is the entry point the helmdeck control plane reads at
+# startup (and on POST /api/v1/marketplace/refresh) to enumerate the
+# pack catalog without walking every directory under packs/.
+#
+# Validate locally before opening a PR:
+#   ajv validate -s schemas/index.schema.json -d index.yaml
+#
+# Each entry must agree with packs/<name>/helmdeck-pack.yaml on name +
+# version — the validate.yml workflow enforces this on every PR.
+
+catalog_version: v1
+
+packs: []

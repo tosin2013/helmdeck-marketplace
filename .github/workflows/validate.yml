@@ -1,0 +1,122 @@
+name: validate
+
+# Runs on every PR + every push to main. Validates:
+#   1. index.yaml conforms to schemas/index.schema.json
+#   2. Every packs/<name>/helmdeck-pack.yaml conforms to schemas/helmdeck-pack.schema.json
+#   3. Every index.yaml entry has a matching packs/<name>/helmdeck-pack.yaml (and vice versa)
+#   4. name + version in index.yaml entries agree with the manifest
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-schemas:
+    name: schema validation (index + per-pack manifests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install validators
+        run: |
+          npm install -g ajv-cli@^5 js-yaml@^4
+
+      - name: Validate index.yaml
+        run: |
+          set -euo pipefail
+          # Convert YAML -> JSON for ajv.
+          node -e "
+            const fs = require('fs');
+            const yaml = require('js-yaml');
+            const data = yaml.load(fs.readFileSync('index.yaml', 'utf8'));
+            fs.writeFileSync('/tmp/index.json', JSON.stringify(data));
+          "
+          ajv validate \
+            -s schemas/index.schema.json \
+            -d /tmp/index.json \
+            --strict=false
+
+      - name: Validate every pack manifest
+        run: |
+          set -euo pipefail
+          fail=0
+          for manifest in packs/*/helmdeck-pack.yaml; do
+            [ -f "$manifest" ] || continue
+            echo "validating $manifest"
+            node -e "
+              const fs = require('fs');
+              const yaml = require('js-yaml');
+              const data = yaml.load(fs.readFileSync('$manifest', 'utf8'));
+              fs.writeFileSync('/tmp/manifest.json', JSON.stringify(data));
+            "
+            if ! ajv validate \
+                -s schemas/helmdeck-pack.schema.json \
+                -d /tmp/manifest.json \
+                --strict=false; then
+              fail=1
+            fi
+          done
+          if [ "$fail" = "1" ]; then
+            echo "::error::one or more pack manifests failed schema validation"
+            exit 1
+          fi
+
+      - name: Cross-check index.yaml entries match manifests
+        run: |
+          set -euo pipefail
+          node -e "
+            const fs = require('fs');
+            const path = require('path');
+            const yaml = require('js-yaml');
+
+            const index = yaml.load(fs.readFileSync('index.yaml', 'utf8'));
+            const indexed = new Map();
+            for (const p of (index.packs || [])) {
+              indexed.set(p.name, p);
+            }
+
+            const onDisk = new Map();
+            for (const dir of fs.readdirSync('packs')) {
+              const manifestPath = path.join('packs', dir, 'helmdeck-pack.yaml');
+              if (!fs.existsSync(manifestPath)) continue;
+              const m = yaml.load(fs.readFileSync(manifestPath, 'utf8'));
+              onDisk.set(m.name, {manifest: m, dir});
+            }
+
+            let fail = false;
+            for (const [name, p] of indexed) {
+              const entry = onDisk.get(name);
+              if (!entry) {
+                console.error('::error::index.yaml entry for ' + name + ' has no matching packs/<name>/helmdeck-pack.yaml');
+                fail = true;
+                continue;
+              }
+              if (entry.manifest.version !== p.version) {
+                console.error('::error::version mismatch for ' + name + ': index says ' + p.version + ', manifest says ' + entry.manifest.version);
+                fail = true;
+              }
+              const expectedPath = 'packs/' + entry.dir;
+              if (p.path !== expectedPath && p.path !== expectedPath + '/') {
+                console.error('::error::path mismatch for ' + name + ': index says ' + p.path + ', actual dir is ' + expectedPath);
+                fail = true;
+              }
+            }
+            for (const [name] of onDisk) {
+              if (!indexed.has(name)) {
+                console.error('::error::packs/' + name + '/helmdeck-pack.yaml exists but no entry in index.yaml');
+                fail = true;
+              }
+            }
+            if (fail) process.exit(1);
+            console.log('index.yaml and on-disk manifests agree on ' + indexed.size + ' pack(s)');
+          "

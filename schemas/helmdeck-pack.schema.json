@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/tosin2013/helmdeck-marketplace/main/schemas/helmdeck-pack.schema.json",
+  "title": "helmdeck-pack manifest",
+  "description": "Schema for the per-pack helmdeck-pack.yaml manifest. Every pack in the marketplace MUST have a manifest that validates against this schema. See helmdeck ADR 034 for the design rationale.",
+  "type": "object",
+  "required": ["name", "version", "author", "description", "input_schema", "output_schema", "handler"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+      "description": "Pack name in <family>.<verb> form. Globally unique within the catalog. Lowercase alphanumerics + underscore only; one dot separator."
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Pack version. Semver (v1, v1.2.0) or date-style (2026.05). Bump on every change."
+    },
+    "author": {
+      "type": "string",
+      "minLength": 1,
+      "description": "GitHub username or organization. Surfaces in the UI's pack-detail view."
+    },
+    "license": {
+      "type": "string",
+      "description": "SPDX identifier for the handler's license. Apache-2.0, MIT, BSD-3-Clause, etc. Strongly recommended; defaults to 'unspecified' when omitted."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 10,
+      "description": "One-paragraph plain-English summary. Surfaces in the catalog list."
+    },
+    "category": {
+      "type": "string",
+      "enum": ["developer-tools", "cloud", "notifications", "database", "security", "ai-tools", "monitoring", "productivity", "media"],
+      "description": "Catalog category for browse/filter UI."
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Free-form search keywords."
+    },
+    "needs_session": {
+      "type": "boolean",
+      "default": false,
+      "description": "True if the pack reads/writes session-scoped filesystem state (e.g. cloned repos under /tmp/helmdeck-clone-X). Determines whether the engine acquires a session before dispatching."
+    },
+    "input_schema": {
+      "$ref": "#/$defs/basicSchema",
+      "description": "JSON-Schema-style description of the pack's input. Validated by the engine before dispatch."
+    },
+    "output_schema": {
+      "$ref": "#/$defs/basicSchema",
+      "description": "JSON-Schema-style description of the pack's output. Validated by the engine after the handler returns."
+    },
+    "handler": {
+      "$ref": "#/$defs/handler",
+      "description": "How the engine invokes the pack. Type determines the rest of the shape."
+    },
+    "examples": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "input"],
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "input": { "type": "object" },
+          "expected_output_subset": {
+            "type": "object",
+            "description": "Optional partial output to assert against. Test runner checks every key in this object is present in the actual output and matches."
+          }
+        }
+      },
+      "description": "Worked input/output pairs the validation CI runs against."
+    },
+    "trust": {
+      "type": "object",
+      "properties": {
+        "signed_by": {
+          "type": "string",
+          "description": "GitHub identity that signed this pack via cosign. Populated by the signing workflow; not author-managed."
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "SHA256 of the pack directory tarball. Populated by the signing workflow."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Trust metadata. Authors do NOT populate this — the signing workflow at release time does."
+    }
+  },
+  "$defs": {
+    "basicSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Field names that must be present on every call."
+        },
+        "properties": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["string", "number", "boolean", "object", "array"]
+              },
+              "description": { "type": "string" }
+            },
+            "required": ["type"]
+          },
+          "description": "Per-field type declarations. Mirrors helmdeck's BasicSchema (internal/packs/schema.go)."
+        }
+      }
+    },
+    "handler": {
+      "oneOf": [
+        { "$ref": "#/$defs/handlerBuiltin" },
+        { "$ref": "#/$defs/handlerCommand" },
+        { "$ref": "#/$defs/handlerComposite" },
+        { "$ref": "#/$defs/handlerWasm" }
+      ]
+    },
+    "handlerBuiltin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "const": "builtin" }
+      },
+      "description": "Reserved for core packs compiled into the helmdeck binary. Not allowed in community marketplace packs."
+    },
+    "handlerCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "command"],
+      "properties": {
+        "type": { "const": "command" },
+        "command": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "argv list for the handler subprocess. Paths are resolved relative to the pack's directory."
+        },
+        "timeout_s": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600,
+          "default": 60,
+          "description": "Wall-clock cap. The pack caller's context still wins if it cancels first."
+        },
+        "env": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Z_][A-Z0-9_]*=.+$" },
+          "description": "Per-call env vars in KEY=VALUE form. Do NOT put secrets here — use the vault."
+        },
+        "max_output_bytes": {
+          "type": "integer",
+          "minimum": 1024,
+          "default": 16777216,
+          "description": "stdout cap. Excess bytes are silently truncated."
+        }
+      }
+    },
+    "handlerComposite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "steps"],
+      "properties": {
+        "type": { "const": "composite" },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["pack", "args"],
+            "additionalProperties": false,
+            "properties": {
+              "pack": { "type": "string" },
+              "args": {
+                "type": "object",
+                "description": "Argument map for the pack. Values prefixed with `$.` are JSONPath references into the input or previous-step outputs (e.g. `$.input.topic`, `$.steps[0].output.summary`)."
+              }
+            }
+          }
+        }
+      }
+    },
+    "handlerWasm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "module"],
+      "properties": {
+        "type": { "const": "wasm" },
+        "module": {
+          "type": "string",
+          "description": "Path to the .wasm module, relative to the pack directory."
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["net", "fs:read", "fs:write", "env"]
+          },
+          "description": "WASI capabilities the module needs. Operators approve each at install time."
+        }
+      },
+      "description": "Phase 8 only — WASM/WASI sandbox. Not yet implemented in helmdeck v0.13.0."
+    }
+  }
+}
