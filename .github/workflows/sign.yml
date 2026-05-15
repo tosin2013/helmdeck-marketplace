@@ -26,6 +26,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Stage A trust gate: every helmdeck-pack.yaml's trust.sha256
+      # must match the deterministic hash of the pack's non-manifest
+      # files. Catches the maintainer-forgot-to-rerun-populate case
+      # before signatures get attached to a release — better to fail
+      # the workflow than to ship a release whose signed tarballs
+      # disagree with the in-manifest hashes the installer checks.
+      - name: Verify trust.sha256 fields match pack contents
+        run: |
+          npm install --no-save --silent js-yaml@^4
+          node scripts/populate-trust-hashes.mjs --check
+
       - uses: sigstore/cosign-installer@v3
 
       - name: Tarball + sign each pack directory
